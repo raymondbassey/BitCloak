@@ -306,3 +306,61 @@
         )
     )
 )
+
+;; Admin Recovery Function
+(define-public (admin-recovery 
+    (token <ft-trait>)
+    (recipient principal)
+    (amount uint))
+    ;; Allow the contract owner to recover tokens in case of emergency
+    (begin
+        ;; Validate inputs
+        (asserts! (is-valid-token token) (err ERR-INVALID-INPUT))
+        
+        ;; Only contract owner can recover
+        (asserts! (is-contract-owner tx-sender) (err ERR-NOT-AUTHORIZED))
+        
+        ;; Validate recovery amount
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+        
+        ;; Transfer tokens with error handling
+        (match (as-contract (contract-call? token transfer amount tx-sender recipient none))
+            success (ok true)
+            error (err ERR-TRANSFER-FAILED)
+        )
+    )
+)
+
+;; Read-only Functions
+(define-read-only (get-contract-status)
+    ;; Get the current status of the contract including paused state, total deposited, and next leaf index
+    (ok {
+        paused: (var-get contract-paused),
+        total-deposited: (var-get total-deposited),
+        next-leaf-index: (var-get next-leaf-index)
+    })
+)
+
+(define-read-only (get-current-root)
+    ;; Get the current Merkle root
+    (ok (var-get merkle-root))
+)
+
+(define-read-only (check-nullifier-status (nullifier (buff 32)))
+    ;; Check the status of a nullifier
+    (map-get? nullifier-status { nullifier: nullifier })
+)
+
+(define-read-only (get-deposit-details (commitment (buff 32)))
+    ;; Get the details of a deposit by its commitment
+    (map-get? deposit-records { commitment: commitment })
+)
+
+;; Contract Initialization
+(begin
+    ;; Initialize contract state variables
+    (var-set merkle-root ZERO-VALUE)
+    (var-set next-leaf-index u0)
+    (var-set contract-paused false)
+    (var-set total-deposited u0)
+)
