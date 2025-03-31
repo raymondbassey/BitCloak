@@ -116,3 +116,57 @@
     ;; Check if the sender is the contract owner
     (is-eq sender CONTRACT-OWNER)
 )
+
+;; Pause Control
+(define-public (toggle-contract-pause)
+    ;; Toggle the contract's paused state, only the contract owner can perform this action
+    (begin
+        (asserts! (is-contract-owner tx-sender) (err ERR-NOT-AUTHORIZED))
+        (var-set contract-paused (not (var-get contract-paused)))
+        (ok (var-get contract-paused))
+    )
+)
+
+;; Internal Helper Functions
+(define-private (combine-hashes (left (buff 32)) (right (buff 32)))
+    ;; Combine two hashes using SHA-256
+    (sha256 (concat left right))
+)
+
+(define-private (is-valid-node-hash? (hash (buff 32)))
+    ;; Check if the node hash is valid by ensuring it is not zero
+    (not (is-eq hash ZERO-VALUE))
+)
+
+(define-private (get-merkle-node (level uint) (index uint))
+    ;; Retrieve the Merkle node hash at a specific level and index, default to ZERO-VALUE if not found
+    (default-to 
+        ZERO-VALUE
+        (get node-hash (map-get? merkle-nodes { level: level, index: index })))
+)
+
+(define-private (set-merkle-node (level uint) (index uint) (hash (buff 32)))
+    ;; Set the Merkle node hash at a specific level and index
+    (map-set merkle-nodes
+        { level: level, index: index }
+        { node-hash: hash })
+)
+
+;; Merkle Tree Update Logic
+(define-private (update-merkle-parent (level uint) (index uint))
+    ;; Update the parent node in the Merkle tree by combining the current node and its sibling
+    (let (
+        (parent-index (/ index u2))
+        (is-right-child (is-eq (mod index u2) u1))
+        (sibling-index (if is-right-child (- index u1) (+ index u1)))
+        (current-node (get-merkle-node level index))
+        (sibling-node (get-merkle-node level sibling-index))
+    )
+        (set-merkle-node 
+            (+ level u1) 
+            parent-index 
+            (if is-right-child
+                (combine-hashes sibling-node current-node)
+                (combine-hashes current-node sibling-node)))
+    )
+)
